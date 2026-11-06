@@ -12,7 +12,7 @@ import { VslCover, type VslCoverStatus } from "./VslCover";
  * The lock is intentionally NOT persisted: a reload starts from zero, plays
  * up to this point again and locks again. See docs/FUNNEL.md.
  */
-export const VSL_LOCK_AT_SECONDS: number | null = 5;
+export const VSL_LOCK_AT_SECONDS: number | null = 10;
 
 export interface VslPlaybackState {
   /** Current playback position in seconds. */

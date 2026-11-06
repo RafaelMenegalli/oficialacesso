@@ -69,7 +69,7 @@ Every variable is listed with a one-line comment in [`.env.example`](.env.exampl
 | `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` | The approved template. |
 | `NEXT_PUBLIC_VSL_URL` | Link in the template's button. |
 
-The video locks at 5 seconds (`VSL_LOCK_AT_SECONDS` in `src/components/vsl/VslPlayer.tsx`).
+The video locks at 10 seconds (`VSL_LOCK_AT_SECONDS` in `src/components/vsl/VslPlayer.tsx`).
 See `docs/FUNNEL.md` for the funnel and `docs/WHATSAPP.md` for the WhatsApp integration.
 
 ## Editing testimonials
