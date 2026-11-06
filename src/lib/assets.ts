@@ -29,11 +29,21 @@ export function resolveCoverImage(): string | undefined {
 }
 
 /**
+ * Production copy of the VSL, hosted on the media subdomain (the 148 MB file
+ * is not in git, so deployed builds never have the local one).
+ */
+export const HOSTED_VIDEO_URL = "https://media.oficialacesso.site/vsl.mp4";
+
+/**
  * Video source resolution order:
- * 1. NEXT_PUBLIC_VSL_VIDEO_URL (e.g. a CDN / Bunny / S3 URL) when set
- * 2. the local file at /public/assets/vsl-video.mp4
+ * 1. NEXT_PUBLIC_VSL_VIDEO_URL when set *at build time* (it is baked into the
+ *    prerendered page — setting it only on the running server has no effect);
+ * 2. the local file /public/assets/vsl-video.mp4 when present (local dev);
+ * 3. HOSTED_VIDEO_URL.
  */
 export function resolveVideoSrc(): string {
-  const remote = process.env.NEXT_PUBLIC_VSL_VIDEO_URL?.trim();
-  return remote ? remote : ASSETS.video;
+  const configured = process.env.NEXT_PUBLIC_VSL_VIDEO_URL?.trim();
+  if (configured) return configured;
+  if (hasPublicAsset(ASSETS.video)) return ASSETS.video;
+  return HOSTED_VIDEO_URL;
 }
