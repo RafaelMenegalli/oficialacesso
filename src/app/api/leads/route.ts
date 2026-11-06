@@ -160,7 +160,9 @@ export async function POST(request: Request) {
       return json({ status: "failed", leadId: lead.id, message, fallbackUrl: buildWaLink(firstName) }, 200);
     });
   } catch (error) {
-    log.error("leads.unexpected_error", { detail: error instanceof Error ? error.name : "unknown" });
+    const code =
+      error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : null;
+    log.error("leads.unexpected_error", { detail: error instanceof Error ? error.name : "unknown", code });
     return json({ status: "failed", message: MSG.internal }, 500);
   }
 }
