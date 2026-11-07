@@ -44,7 +44,9 @@ Service. Meta detects automation through volume, repetition and sender behaviour
 
 What the code does to keep the risk low:
 - **One message per lead.** A lead already in `sent`/`delivered`/`read` is never messaged again,
-  and a per-phone lock prevents double sends.
+  and a per-phone lock prevents double sends. The only exception is the owner's own test numbers
+  in `WHATSAPP_TEST_NUMBERS` (comma-separated), which can receive the message every time the form
+  is submitted. Keep that list to your own numbers.
 - **Opt-in only.** Sends happen only after she ticks the consent box, and the server rejects
   anything else.
 - **Human-like send.** `delay: 1200` makes WhatsApp show "digitando…" for 1.2 s before sending.

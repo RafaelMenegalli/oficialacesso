@@ -11,7 +11,7 @@
  */
 import { getDb } from "@/lib/db";
 import { getServerEnv } from "@/lib/env";
-import { buildLeadMessage, buildWaLink, firstNameOf, sendText } from "@/lib/evolution";
+import { buildLeadMessage, buildWaLink, firstNameOf, isTestNumber, sendText } from "@/lib/evolution";
 import { log, maskPhone } from "@/lib/log";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { leadRequestSchema, type LeadResponse } from "@/lib/validation";
@@ -89,7 +89,10 @@ export async function POST(request: Request) {
         update: { name, consentAt: now, consentIp: ip },
       });
 
-      if (ALREADY_SENT.has(lead.status)) {
+      const testNumber = isTestNumber(phone);
+      if (testNumber && ALREADY_SENT.has(lead.status)) {
+        log.info("leads.test_number_resend", { leadId: lead.id, phone: masked });
+      } else if (ALREADY_SENT.has(lead.status)) {
         log.info("leads.already_sent", { leadId: lead.id, phone: masked, status: lead.status });
         return json({ status: "sent", leadId: lead.id }, 200);
       }

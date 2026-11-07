@@ -81,6 +81,20 @@ export function phoneCandidatesFromJid(jid: string): string[] {
   return [`+${digits}`];
 }
 
+/**
+ * Owner's test numbers (WHATSAPP_TEST_NUMBERS, comma-separated, any format):
+ * they skip the "never message the same number twice" rule so the owner can
+ * resend to themselves. Kept in the environment, not in code, so no personal
+ * number lives in the repository.
+ */
+export function isTestNumber(phoneE164: string): boolean {
+  const raw = process.env.WHATSAPP_TEST_NUMBERS ?? "";
+  return raw
+    .split(",")
+    .map((entry) => normalizePhone(entry))
+    .some((result) => result.ok && result.e164 === phoneE164);
+}
+
 export function firstNameOf(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] ?? fullName.trim();
 }
