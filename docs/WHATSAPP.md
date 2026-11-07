@@ -1,183 +1,235 @@
-# WhatsApp delivery (Omni Z-API, CoEX)
+# WhatsApp delivery (Evolution API, Baileys)
 
-The lead modal on `/vsl` collects name, phone and consent. The server then sends
-**one** approved Meta template to the lead through **Omni Z-API**.
+When a visitor fills in the lead modal on `/vsl` (name, WhatsApp number, consent), the server
+sends **one** WhatsApp text to her through a self-hosted **Evolution API** instance:
 
 ```
-modal ─POST /api/leads─▶ validate + consent + upsert Lead ─▶ template approved? ─▶ send template
-                                                                     │ no / send fails
-                                                                     ▼
-                                                     status "failed" + wa.me fallback link
-Omni Z-API ─POST /api/whatsapp/webhook─▶ statuses (sent → delivered → read), inbound replies, connection events
+modal ─POST /api/leads─▶ validate + consent + upsert Lead ─▶ POST /message/sendText ─▶ her WhatsApp
+                                         │ send fails
+                                         ▼
+                              status "failed" + wa.me fallback link
+Evolution ─POST /api/whatsapp/webhook/<secret>─▶ delivery/read updates, inbound replies, connection state
 ```
 
-## Why Omni Z-API
+The message (built by `buildLeadMessage()` in `src/lib/evolution.ts`):
 
-CoEX (Coexistence) is Meta's official mode: one number works in the **WhatsApp Business app**
-and in the **Cloud API** at the same time. The owner keeps chatting manually on +55 19 98163-0656
-while the API sends the automated message.
+```
+Oii, {primeiro nome}! Tudo bem? 💛
+Segue o link para assistir ao vídeo completo:
+https://oficialacesso.site/vsl
+```
 
-At Z-API, CoEX is not part of the classic product (`api.z-api.io`, QR-code instances, `Client-Token`).
-It runs on **Omni Z-API**, a separate product with its own panel (`app.omni.z-api.io`) and its own API.
-This was verified in the docs on 2026-11-06:
+## Why Evolution API
 
-| | Classic Z-API (QR-code) | Omni Z-API (official / CoEX), used here |
+Evolution API in **Baileys** mode links to WhatsApp as a companion device (like WhatsApp Web),
+using the owner's own number:
+- **Free-form text right away.** It can message any number immediately, with no template to get
+  approved first.
+- **No per-message cost.** Meta doesn't bill this mode.
+- **Self-hosted.** The instance, the session and the message data stay on our own server.
+
+## ⚠️ Ban risk: read this first
+
+**Baileys is unofficial.** It emulates a linked device, which goes against WhatsApp's Terms of
+Service. Meta detects automation through volume, repetition and sender behaviour, and can
+**restrict or ban the number** at any time, with no appeal. This risk was accepted knowingly.
+
+What the code does to keep the risk low:
+- **One message per lead.** A lead already in `sent`/`delivered`/`read` is never messaged again,
+  and a per-phone lock prevents double sends.
+- **Opt-in only.** Sends happen only after she ticks the consent box, and the server rejects
+  anything else.
+- **Human-like send.** `delay: 1200` makes WhatsApp show "digitando…" for 1.2 s before sending.
+- **No auto-replies, ever.**
+- **IP rate limit** on the form: 5 requests per minute.
+
+**TODO (owner):**
+- **Keep volume low.** No bursts.
+- **Warm the number up:** a few dozen messages a day at first, increasing slowly over weeks.
+- **Keep using the number normally:** chat, reply, keep conversations two-way.
+- **Never broadcast** or send to lists. If the number gets restricted, stop all sending
+  immediately.
+
+## The Docker stack
+
+Evolution runs on a **VPS with Docker**, not on the Hostinger Node.js hosting, which can't run
+containers. Everything is in `docker-compose.evolution.yml`:
+
+| Service | Image | Role |
 | - | - | - |
-| Panel | app.z-api.io | app.omni.z-api.io |
-| Base URL | `https://api.z-api.io` | `https://api.omni.z-api.io` |
-| Auth | `Client-Token` header + instance token in the path | `Authorization: Bearer <Secret Key>` |
-| Id | instance id | channel id (+ WABA id for templates) |
-| Templates | not applicable | `POST /v1/channels/{channelId}/messages` with `content.type: TEMPLATE` |
+| `evolution-api` | `evoapicloud/evolution-api:v2.3.7` | The API. Not published to the internet. |
+| `postgres` | `postgres:16.10-alpine` | Evolution's own storage (instances, messages). |
+| `redis` | `redis:7.4.6-alpine` | Evolution's cache. |
+| `caddy` | `caddy:2.10.2-alpine` | Reverse proxy. Only it publishes ports 80/443, and it gets a Let's Encrypt certificate. |
 
-That's why the env vars are `ZAPI_SECRET_KEY` / `ZAPI_CHANNEL_ID` / `ZAPI_WABA_ID` instead of the
-`ZAPI_TOKEN` / `ZAPI_CLIENT_TOKEN` / `ZAPI_INSTANCE_ID` used by the classic product.
-
-### CoEX constraints (not worked around)
-
-- **Business-initiated messages need an approved template.** Free text to someone who never wrote
-  to the number is rejected. The first message is a **MARKETING** template.
-- **Cost:** R$ 0,3217 per *delivered* MARKETING message to a Brazilian number (Meta rate card in
-  force since 1 Oct 2026). Undelivered messages are not charged. Messages the owner sends by hand
-  from the app are free. Only API traffic is billed. A payment method must be set up in Meta.
-- **Throughput:** capped at 20 messages/second. That's irrelevant at one message per lead, but it rules out bulk sends.
-- **Open the WhatsApp Business app at least every 14 days.** Otherwise Meta unlinks the API.
-  Omni's docs say 15 days; 14 leaves a margin. A disconnect shows up as `DisconnectedCallback` in
-  the logs (`whatsapp.disconnected`), and sends fail with `CHANNEL_DISCONNECTED`.
-- **WhatsApp Desktop for Windows stops working** with a CoEX number. Linked devices are logged out
-  at connection and can be re-linked.
-- **No green "Official Business Account" badge** on CoEX numbers. Not attempted.
-
-## The template
-
-Defined in `scripts/create-template.mts`:
-
-| Field | Value |
-| - | - |
-| Name | `simpatia_acesso_imediato` (`WHATSAPP_TEMPLATE_NAME`) |
-| Category | `MARKETING` |
-| Language | `pt_BR` |
-| Body | `Oii, {{1}}! Tudo bem? Segue o link para assistir ao vídeo completo.` (`{{1}}` = first name, example "Maria") |
-| Footer | `Equipe Sensitiva` |
-| Button | URL, label `Assistir agora`, static target `NEXT_PUBLIC_VSL_URL` |
-
-**Why the link is in the button, not the body:**
-- The body stays short and personal.
-- The tap target is unambiguous: one big button, no tiny link in the text.
-- Meta's link-preview rewriting inside template bodies is avoided.
-- A static URL means the button needs **no parameter at send time**: only `{{1}}` is sent.
-
-The template is text-only: no header and no media.
-
-### Create it
-
-Option A, via API (Omni exposes template creation):
+All four share one bridge network, data lives in named volumes, and every image tag is pinned.
 
 ```bash
-npm run whatsapp:template
+# On the VPS, in a checkout of this repo:
+cp .env.evolution.example .env.evolution     # fill AUTHENTICATION_API_KEY, POSTGRES_PASSWORD, EVOLUTION_DOMAIN
+docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d
+docker compose -f docker-compose.evolution.yml logs -f evolution-api
 ```
 
-The command is idempotent. If a template with the same name and language exists, it prints its
-id and status. Otherwise it creates the template and prints `PENDING`. Run it again to see the
-status change to `APPROVED` (usually minutes, up to 24 h).
+Before starting, create an **A record** `evolution.oficialacesso.site` pointing at the VPS IP,
+so Caddy can issue the certificate.
 
-Option B, in the panel. The menu labels below come from the docs and weren't checked in the live
-panel, so they may differ slightly. In **app.omni.z-api.io → Templates → Novo template**, choose
-**Mensagem customizada**, then fill in:
-- **WABA:** the CoEX number's WABA
-- **Nome:** `simpatia_acesso_imediato`
-- **Categoria:** Marketing
-- **Idioma:** Português (BR)
-- **Corpo:** the text above, with example `Maria` for `{{1}}`
-- **Rodapé:** `Equipe Sensitiva`
-- **Botão:** Link, label `Assistir agora`, URL `https://oficialacesso.site/vsl`
+`AUTHENTICATION_API_KEY` is **required**. It is the **global key**, and the app stores the same
+value as `EVOLUTION_API_KEY`.
 
-Submit, and wait for **Aprovado**. If you change the name or language, update `WHATSAPP_TEMPLATE_NAME` / `WHATSAPP_TEMPLATE_LANG`.
+## Two keys: don't mix them up
 
-Before the first send in each server process, the app checks that the template is `APPROVED`
-(`GET /whatsapp/businesses/{wabaId}/templates`) and caches a positive answer for the life of the
-process. If it's pending or rejected, the lead is marked `failed` with `replyError=template_pending`
-(or `template_rejected` / `template_not_found`). An `error` log names the fix, and the visitor gets the
-fallback link.
+Evolution authenticates with a flat **`apikey`** header, never `Authorization: Bearer`. There
+are two keys:
+
+| Key | Env var (app) | Where it comes from | Used for |
+| - | - | - | - |
+| **Global key** | `EVOLUTION_API_KEY` | `AUTHENTICATION_API_KEY` on the server | Instance lifecycle (create, list, connect, delete, logout) and webhook config |
+| **Instance token** | `EVOLUTION_INSTANCE_TOKEN` | Returned when the instance is created (`hash`) | Sending messages |
+
+Every call site in `src/lib/evolution.ts` says which key it uses. A 401 almost always means the
+wrong tier.
+
+## Setup: `npm run whatsapp:setup`
+
+Run it locally, with `.env` holding `EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`,
+`EVOLUTION_WEBHOOK_SECRET` and `APP_URL`. It's idempotent, so you can rerun it any time:
+
+1. **Lists instances** (`GET /instance/fetchInstances`, global key). If `EVOLUTION_INSTANCE_NAME`
+   exists, it prints name, id, status and a masked token, and skips creation.
+2. **Creates the instance** otherwise (`POST /instance/create`, `integration: "WHATSAPP-BAILEYS"`,
+   `qrcode: true`, webhook included). The token is **written to `.env`** as
+   `EVOLUTION_INSTANCE_TOKEN` and printed only masked (`abcd…wxyz`).
+3. **Sets the webhook** (`POST /webhook/set/{instance}`), see the next section.
+4. **Links the phone** if the state isn't `open` (`GET /instance/connect/{instance}`):
+   - the QR is saved as **`evolution-qr.png`** (git-ignored). Open it and scan from the phone:
+     **WhatsApp Business → Dispositivos conectados → Conectar dispositivo**;
+   - or run `npm run whatsapp:setup -- --pair 5519981630656` to get an **8-character pairing
+     code** and choose "Conectar com número de telefone" on the phone.
+
+   The QR expires in about **40 seconds**. If it does, just run the command again.
+5. **Reports the state** (`GET /instance/connectionState/{instance}`). `open` means ready. `close`
+   means it wasn't linked, so scan again.
+
+After it runs, copy `EVOLUTION_INSTANCE_TOKEN` from `.env` to the Hostinger environment and
+redeploy.
 
 ## The webhook
 
-Register it once per environment:
+The setup script registers it with the **global key**:
 
-```bash
-npm run whatsapp:webhook                     # https://oficialacesso.site/api/whatsapp/webhook
-npm run whatsapp:webhook -- https://<tunnel>/api/whatsapp/webhook
+```json
+POST /webhook/set/sensitiva
+{
+  "webhook": {
+    "enabled": true,
+    "url": "https://oficialacesso.site/api/whatsapp/webhook/<EVOLUTION_WEBHOOK_SECRET>",
+    "byEvents": false,
+    "base64": false,
+    "events": ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "SEND_MESSAGE"]
+  }
+}
 ```
 
-The script creates a channel webhook with:
-- `payloadFormat: Z_API`, so callbacks arrive as `ReceivedCallback`, `MessageStatusCallback`, `DeliveryCallback`, `ConnectedCallback` and `DisconnectedCallback`
-- events `MESSAGE_RECEIVED`, `MESSAGE_DELIVERY`, `MESSAGE_STATUS`, `CONNECTED`, `DISCONNECTED`
-- auth `CUSTOM_HEADER`: `x-webhook-secret: <ZAPI_WEBHOOK_SECRET>`
-- `signing: true`. Omni returns an HMAC secret **once**, and the script writes it into `.env` as
-  `ZAPI_WEBHOOK_SIGNING_SECRET` without printing it. Copy it to production too.
+In Evolution **v2.3.7** the keys inside `webhook` are **`byEvents`** and **`base64`**. The names
+`webhookByEvents`/`webhookBase64` are ignored by v2's `/webhook/set`, which was verified in the
+source.
+- `byEvents: false` keeps every event on one URL, which is simpler to validate. With `true`,
+  Evolution appends the event name to the URL (`…/<secret>/messages-upsert`) and this route
+  would no longer match.
 
-The same can be done in the panel (**Canais → canal → Webhooks → Novo**) with those settings.
-In that case, paste the signing secret into the env yourself.
+**Security.** Evolution doesn't sign webhooks. Protection comes from:
+- **the secret path segment:** the route compares it to `EVOLUTION_WEBHOOK_SECRET` with
+  `crypto.timingSafeEqual` (both sides hashed) and returns **401 before reading the body**;
+- **HTTPS end to end;**
+- **optionally, an IP allow-list:** only the VPS IP may call `/api/whatsapp/webhook/*`, set in the
+  Hostinger firewall or proxy.
 
-What the route does:
-- **Checks the caller.** The secret must arrive in the `x-webhook-secret` header (or a `?token=`
-  query) and is compared in constant time. If a signing secret is configured, the HMAC in
-  `x-webhook-signature` is verified as well. A mismatch returns 401.
-- **Acknowledges first.** It answers 200 right away and processes in `after()`, because Omni retries
-  anything slower than 5 s or any non-2xx response.
-- **Is idempotent.** Each handled event inserts a `MessageLog` row with a unique `providerMessageId`
-  (message id, or `<id>:<STATUS>`). A replayed callback hits the unique key and changes nothing.
-- **Inbound (`ReceivedCallback`):**
-  - groups, `fromMe` echoes, newsletters and broadcasts are ignored;
-  - the lead is matched by phone (with or without the 9th digit);
-  - it records `firstInboundAt` and `lastInboundAt`; the 24 h service window runs from `lastInboundAt` (`isWindowOpen()`);
-  - there is no auto-reply;
-  - unknown numbers are logged with a masked phone and nothing else happens.
-- **Statuses** advance the lead and never move it backwards (`sent → delivered → read`).
-  `RECEIVED` means delivered. Errors in a `DeliveryCallback` mark the lead `failed` with the code.
-- **`DisconnectedCallback`** logs `whatsapp.disconnected` at error level. It usually means the
-  14-day app-open rule lapsed.
+Webhook bodies include the **instance token** in `apikey`, so the route never logs raw payloads.
 
-### Testing locally with a tunnel
+**Behaviour:**
+- **Fast acknowledgement.** The route answers 200 at once and processes in `after()`. Evolution
+  retries non-2xx responses, with a 60 s timeout.
+- **`messages.upsert`, `fromMe: true`:** an echo of our own send, or the owner typing in the app.
+  It's ignored.
+- **`messages.upsert`, `fromMe: false`:** an inbound message.
+  - The lead is matched by phone from `key.remoteJid`, with or without the 9th digit. When WhatsApp
+    uses an `@lid` identifier, the phone comes from `key.remoteJidAlt`/`senderPn`.
+  - It sets `firstInboundAt` and stores the text from `message.conversation` or
+    `message.extendedTextMessage.text`.
+  - **No auto-reply.**
+- **`messages.update`:** `SERVER_ACK` means sent, `DELIVERY_ACK` delivered, `READ`/`PLAYED` read,
+  and `ERROR` failed. Status only moves forward. Both v2.3 (`keyId`/`status`) and older
+  (`key.id`/`update.status`) shapes are accepted.
+- **`connection.update`:** `open` logs `whatsapp.connected`; `close` logs `whatsapp.disconnected`
+  as a **warning**, meaning the phone has to be rescanned.
+- **`send.message`:** an echo of a send, logged at debug level.
+- **Groups and broadcasts** (`@g.us`, `@broadcast`, `@newsletter`) and unknown events are ignored.
+- **Unknown numbers:** logged with a masked phone and nothing else happens.
+- **Idempotency:** each handled event inserts a `MessageLog` row whose `waMessageId` is unique
+  (the message id, or `<id>:<STATUS>`). A replayed callback hits the constraint and changes
+  nothing.
 
-1. Run `npm run db:dev`, `npm run dev`, then `npx cloudflared tunnel --url http://localhost:3000`
-   (or ngrok).
-2. Run `npm run whatsapp:webhook -- https://<tunnel-host>/api/whatsapp/webhook`.
-3. Submit the modal with your own number, reply to the message, and watch the JSON logs.
-4. Delete the tunnel webhook in the panel afterwards.
+## Testing locally with a tunnel
 
-## Error codes
+1. Run `npm run db:dev`, then `npm run dev`.
+2. Expose the app: `npx cloudflared tunnel --url http://localhost:3000` (or ngrok).
+3. Set `APP_URL=https://<tunnel-host>` in `.env` and run `npm run whatsapp:setup`. This points the
+   webhook at the tunnel.
+4. Submit the modal with your own number, reply from the phone, and watch the JSON logs.
+5. Set `APP_URL` back to `https://oficialacesso.site` and run `npm run whatsapp:setup` again.
 
-| Code | Meaning | What to do |
+## When WhatsApp isn't configured
+
+Production deploys automatically on every push to `main`, so a missing `EVOLUTION_*` variable must
+not take the site down. Startup checks in two tiers (`src/lib/env.ts`):
+- **Core** (`DATABASE_URL`) missing: the server refuses to start.
+- **WhatsApp** (`EVOLUTION_BASE_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_TOKEN`,
+  `EVOLUTION_WEBHOOK_SECRET`) incomplete: startup logs
+  `████ WHATSAPP NOT CONFIGURED ████` listing what's missing, and the site keeps running:
+  - `/vsl` works normally;
+  - `/api/leads` saves the lead (`status: failed`, `replyError: 0:not_configured`) and returns the
+    wa.me fallback link;
+  - the webhook rejects every call while `EVOLUTION_WEBHOOK_SECRET` isn't set.
+
+Leads saved in this state get their message only if they submit again after WhatsApp is configured.
+
+## Diagnostics
+
+`GET /api/health` with header `x-webhook-secret: <EVOLUTION_WEBHOOK_SECRET>` returns:
+- `databaseHost` and `dbConnection`;
+- `whatsapp`: the instance state (`open` when ready), or `not_configured`.
+
+It answers as soon as the secret is set, even before the Evolution server exists.
+
+## Errors
+
+| Error | Meaning | What to do |
 | - | - | - |
-| `190` | Invalid or expired token | Confirm `ZAPI_SECRET_KEY` (Omni) and the channel connection |
-| `131026` | Recipient can't receive messages (not on WhatsApp / invalid) | Nothing to fix on our side; she can use the fallback link |
-| `132000` | Parameter count mismatch between template and send | The body must have exactly one variable; check the approved template |
-| `132001` | Template doesn't exist or isn't approved in that language | Check `WHATSAPP_TEMPLATE_NAME` / `_LANG`; run `npm run whatsapp:template` |
-| `131047` | Re-engagement required (free-form outside the 24 h window) | Not used here: we only send templates |
-| `368` | Temporarily blocked for policy violations | Stop sending; review the template content and quality rating in Meta |
-| `CHANNEL_DISCONNECTED` | Omni: channel not connected (422) | Open the WhatsApp Business app, reconnect the channel in the panel |
-| `VALIDATION_ERROR` | Omni: malformed send body (400) | Bug: check the payload in `sendTemplate` |
-| `template_pending` / `_rejected` / `_not_found` | Our pre-send check | Wait for approval or fix the template |
-| `DisconnectedCallback` | CoEX link dropped | Open the WhatsApp Business app on the phone, then reconnect |
+| `401` | Wrong key tier | Global key for instance operations, instance token for sends |
+| `404` | Instance name doesn't exist | Run `npm run whatsapp:setup` |
+| `Connection Closed` | The linked device dropped | Rescan the QR (`npm run whatsapp:setup`) |
+| `not-authorized` / `not-on-whatsapp` | The number isn't on WhatsApp or is malformed | She gets the fallback link; nothing to fix on our side |
+| `rate-overlimit` | Too many sends too fast | Slow down; warm the number up |
+| `500` with a Baileys stack trace | Usually a stale session | Log the instance out and reconnect (`DELETE /instance/logout/{instance}`, then setup) |
+| `timeout` / `network_error` | Evolution unreachable | Check the VPS, Caddy and the DNS record |
 
-The numeric codes are Meta Graph codes. Omni's own errors use `code` / `subCode` strings. Whatever
-the provider returns is stored in `Lead.replyError` and `MessageLog.errorCode`.
+`Lead.replyError` stores `<http status>:<reason>`, with digits in provider messages masked.
 
 ## Privacy
 
 - **Logs** are JSON lines. Phones are masked (`+5519*****0656`). Names and message bodies appear
-  only at `LOG_LEVEL=debug`. No secret or raw provider payload is ever logged.
+  only at `LOG_LEVEL=debug`. No key, token or raw payload is ever logged.
 - **Consent:** the modal requires an unticked-by-default checkbox, and the server rejects
   `consent !== true`. `consentAt` and `consentIp` are stored on the lead.
-- **TODO (owner decision, LGPD):** how long leads are retained and how deletion requests are handled.
+- **TODO (owner decision, LGPD):** retention period for leads and messages, both in the app
+  database and in Evolution's own Postgres, and how deletion requests are handled.
 
 ## Seams for later (not implemented)
 
-Boleto events (generated, paid, cancelled) will need, in order:
+Boleto events (generated, paid, cancelled) will need:
 1. A payment-gateway webhook route, e.g. `src/app/api/payments/webhook/route.ts`, with its own secret.
 2. Matching the payer to `Lead` by phone (`normalizePhone`).
-3. One new UTILITY template per event, sent with `sendTemplate`. Today it takes the name from env:
-   add a `templateName` parameter when that lands.
+3. A message builder next to `buildLeadMessage()` per event, sent with `sendText()`, and subject
+   to the same low-volume rules above.
 4. Optional new `LeadStatus` values (`paid`, …) via a Prisma migration.
-
-No bulk sends, sequences or bots are planned here; each would multiply the per-message cost above.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizePhone, PHONE_ERROR_MESSAGES } from "@/lib/zapi";
+import { normalizePhone, PHONE_ERROR_MESSAGES } from "@/lib/evolution";
 
 // ---------------------------------------------------------------------------
 // POST /api/leads
@@ -43,55 +43,61 @@ export type LeadResponse =
   | { status: "failed"; leadId?: string; message: string; fallbackUrl?: string };
 
 // ---------------------------------------------------------------------------
-// POST /api/whatsapp/webhook — Omni Z-API, payloadFormat "Z_API"
-// Shapes from developer.z-api.io (Omni keeps the same structure).
-// Unknown fields are allowed; unknown event types are ignored by the route.
+// POST /api/whatsapp/webhook/[secret] — Evolution API v2 webhook
+// Envelope: { event, instance, data, date_time, sender, server_url, apikey }.
+// `event` is lower-case with dots ("messages.upsert"). Unknown fields are
+// allowed; unknown events are ignored by the route.
 // ---------------------------------------------------------------------------
 
-const timestamp = z.number().int().nonnegative().optional();
+export const webhookEnvelopeSchema = z.looseObject({
+  event: z.string(),
+  instance: z.string().optional(),
+  data: z.unknown(),
+});
 
-export const receivedCallbackSchema = z.looseObject({
-  type: z.literal("ReceivedCallback"),
-  messageId: z.string().min(1),
-  phone: z.string().min(1),
+const messageKeySchema = z.looseObject({
+  id: z.string().min(1),
+  remoteJid: z.string().min(1),
+  fromMe: z.boolean(),
+  /** Phone JID when remoteJid is a privacy "@lid" identifier (newer WhatsApp). */
+  remoteJidAlt: z.string().optional(),
+  senderPn: z.string().optional(),
+});
+
+/** messages.upsert / send.message: one message (inbound, or echo of our send). */
+export const messageUpsertSchema = z.looseObject({
+  key: messageKeySchema,
+  pushName: z.string().nullish(),
+  message: z
+    .looseObject({
+      conversation: z.string().nullish(),
+      extendedTextMessage: z.looseObject({ text: z.string().nullish() }).nullish(),
+    })
+    .nullish(),
+  messageType: z.string().nullish(),
+  messageTimestamp: z.union([z.number(), z.string()]).nullish(),
+});
+
+/**
+ * messages.update. v2.3.x sends { keyId, remoteJid, fromMe, status };
+ * older builds send { key: {...}, update: { status } }. Both are accepted.
+ */
+export const messageUpdateSchema = z.looseObject({
+  keyId: z.string().optional(),
+  messageId: z.string().optional(),
+  key: z.looseObject({ id: z.string().optional() }).optional(),
+  remoteJid: z.string().optional(),
   fromMe: z.boolean().optional(),
-  isGroup: z.boolean().optional(),
-  isNewsletter: z.boolean().optional(),
-  broadcast: z.boolean().optional(),
-  momment: timestamp,
-  text: z.looseObject({ message: z.string().optional() }).optional(),
+  status: z.union([z.string(), z.number()]).optional(),
+  update: z.looseObject({ status: z.union([z.string(), z.number()]).optional() }).optional(),
 });
 
-export const messageStatusCallbackSchema = z.looseObject({
-  type: z.literal("MessageStatusCallback"),
-  status: z.string().min(1),
-  ids: z.array(z.string().min(1)).min(1),
-  phone: z.string().optional(),
-  isGroup: z.boolean().optional(),
-  momment: timestamp,
-  error: z.string().optional(),
-  errorCode: z.union([z.string(), z.number()]).optional(),
+/** connection.update: { state: "open" | "close" | "connecting", statusReason? } */
+export const connectionUpdateSchema = z.looseObject({
+  state: z.string().optional(),
+  statusReason: z.union([z.number(), z.string()]).optional(),
 });
 
-/** "Ao enviar": success has no `error`; failure carries `error` (+ maybe `errorCode`). */
-export const deliveryCallbackSchema = z.looseObject({
-  type: z.literal("DeliveryCallback"),
-  messageId: z.string().min(1),
-  phone: z.string().optional(),
-  momment: timestamp,
-  error: z.string().optional(),
-  errorCode: z.union([z.string(), z.number()]).optional(),
-});
-
-export const connectionCallbackSchema = z.looseObject({
-  type: z.enum(["ConnectedCallback", "DisconnectedCallback"]),
-  momment: timestamp,
-  error: z.string().optional(),
-});
-
-export const webhookEnvelopeSchema = z.looseObject({ type: z.string() });
-
-export type ReceivedCallback = z.infer<typeof receivedCallbackSchema>;
-export type MessageStatusCallback = z.infer<typeof messageStatusCallbackSchema>;
-export type DeliveryCallback = z.infer<typeof deliveryCallbackSchema>;
-export type ConnectionCallback = z.infer<typeof connectionCallbackSchema>;
+export type MessageUpsert = z.infer<typeof messageUpsertSchema>;
+export type MessageUpdate = z.infer<typeof messageUpdateSchema>;
+export type ConnectionUpdate = z.infer<typeof connectionUpdateSchema>;

@@ -15,7 +15,7 @@ See [`docs/FUNNEL.md`](docs/FUNNEL.md) for the full funnel and where future piec
 ```bash
 npm install                 # also generates the Prisma client
 npm run db:dev              # local Postgres (Prisma Dev) in the background; prints the URLs
-cp .env.example .env        # then fill DATABASE_URL + the Omni Z-API values
+cp .env.example .env        # then fill DATABASE_URL + the EVOLUTION_* values
 npm run db:migrate          # apply migrations
 npm run dev                 # http://localhost:3000 → redirects to /vsl
 ```
@@ -23,12 +23,20 @@ npm run dev                 # http://localhost:3000 → redirects to /vsl
 ```bash
 npm run build && npm start  # production build + server
 npm run db:deploy           # apply migrations in production
-npm run whatsapp:template   # create / check the WhatsApp template
-npm run whatsapp:webhook    # register the webhook (pass a tunnel URL for local tests)
+npm run whatsapp:setup      # create/link the Evolution instance and register the webhook
 ```
 
-The server **refuses to start** if a required variable is missing and lists each one. That
-includes the Omni Z-API credentials, so fill them in before `npm run dev`.
+Startup checks the environment in two tiers:
+- **Core** (`DATABASE_URL`): if it's missing, the server **refuses to start** and lists the
+  problem.
+- **WhatsApp** (`EVOLUTION_*`): if it's missing, a highlighted error is logged at startup, but the
+  site stays up. Leads are saved and get the wa.me fallback link, but no message is sent.
+
+Deploys are automatic on push to `main`, so an incomplete WhatsApp setup never takes the VSL down.
+
+WhatsApp messages go through a self-hosted **Evolution API** (Baileys). It runs on a VPS from
+`docker-compose.evolution.yml`. Read [`docs/WHATSAPP.md`](docs/WHATSAPP.md), including the
+**ban-risk** section, before going live.
 
 ## Assets
 
@@ -64,10 +72,13 @@ Every variable is listed with a one-line comment in [`.env.example`](.env.exampl
 | --- | --- |
 | `NEXT_PUBLIC_VSL_VIDEO_URL` | Optional remote video URL. Takes priority over `/assets/vsl-video.mp4`. |
 | `DATABASE_URL` | PostgreSQL connection string (leads + message log). |
-| `ZAPI_SECRET_KEY`, `ZAPI_CHANNEL_ID`, `ZAPI_WABA_ID` | Omni Z-API credentials for the CoEX number. |
-| `ZAPI_WEBHOOK_SECRET`, `ZAPI_WEBHOOK_SIGNING_SECRET` | Webhook authentication. |
-| `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` | The approved template. |
-| `NEXT_PUBLIC_VSL_URL` | Link in the template's button. |
+| `EVOLUTION_BASE_URL` | HTTPS URL of the Evolution API server. |
+| `EVOLUTION_API_KEY` | Global key: instance lifecycle and webhook config. |
+| `EVOLUTION_INSTANCE_NAME`, `EVOLUTION_INSTANCE_TOKEN` | The instance and its token, used for sending. |
+| `EVOLUTION_WEBHOOK_SECRET` | Secret path segment of the webhook URL. |
+| `APP_URL` | Public URL of this app, used by the setup script for the webhook URL. |
+| `NEXT_PUBLIC_VSL_URL` | Link sent in the WhatsApp message. |
+| `WHATSAPP_BUSINESS_PHONE` | Business number, used for the wa.me fallback link. |
 
 The video locks at 10 seconds (`VSL_LOCK_AT_SECONDS` in `src/components/vsl/VslPlayer.tsx`).
 See `docs/FUNNEL.md` for the funnel and `docs/WHATSAPP.md` for the WhatsApp integration.
