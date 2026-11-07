@@ -1,0 +1,87 @@
+# Evolution API stack (self-hosted, Baileys) — runs on a VPS with Docker, NOT on
+# the Hostinger Node.js hosting. See docs/WHATSAPP.md.
+#
+#   cp .env.evolution.example .env.evolution   # fill every value
+#   docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d
+#
+# Only Caddy publishes ports (80/443). It obtains a Let's Encrypt certificate
+# for EVOLUTION_DOMAIN and proxies to the API, which is never exposed raw.
+# Image tags are pinned; upgrade deliberately.
+
+name: evolution
+
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    env_file: .env.evolution
+    environment:
+      SERVER_URL: https://${EVOLUTION_DOMAIN}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=evolution_api
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [evolution]
+    expose: ["8080"]
+
+  postgres:
+    image: postgres:16.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - evolution_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [evolution]
+
+  redis:
+    image: redis:7.4.6-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [evolution]
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    command: ["caddy", "reverse-proxy", "--from", "${EVOLUTION_DOMAIN}", "--to", "evolution-api:8080"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [evolution-api]
+    networks: [evolution]
+
+networks:
+  evolution:
+    driver: bridge
+
+volumes:
+  evolution_instances:
+  evolution_postgres:
+  evolution_redis:
+  caddy_data:
+  caddy_config:

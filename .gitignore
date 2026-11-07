@@ -41,9 +41,14 @@ yarn-error.log*
 next-env.d.ts
 
 !.env.example
+!.env.evolution.example
 
 # Large media: host remotely in production (see README)
 /public/assets/vsl-video.mp4
 
 # Prisma generated client
 /src/generated/
+
+# Evolution API setup artefacts
+/evolution-qr.png
+.env.evolution
