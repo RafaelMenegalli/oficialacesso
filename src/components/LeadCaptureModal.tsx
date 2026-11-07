@@ -189,7 +189,7 @@ export function LeadCaptureModal({ open, onSubmit, onSuccess }: LeadCaptureModal
             />
           </div>
 
-          {/* Required opt-in before any WhatsApp message (LGPD consent). */}
+          {/* Required opt-in: Meta policy for MARKETING templates + LGPD consent. */}
           <label htmlFor={consentId} className="flex cursor-pointer items-start gap-3 text-sm leading-snug text-bone/85">
             <input
               id={consentId}

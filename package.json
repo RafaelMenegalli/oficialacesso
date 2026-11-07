@@ -12,7 +12,8 @@
     "db:dev": "prisma dev --name sencitiva --detach",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "whatsapp:setup": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/evolution-setup.ts"
+    "whatsapp:template": "node scripts/create-template.mts",
+    "whatsapp:webhook": "node scripts/register-webhook.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",

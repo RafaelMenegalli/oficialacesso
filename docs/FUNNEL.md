@@ -4,8 +4,8 @@
 /vsl ──(video reaches 10 s)──▶ locked modal: name + WhatsApp + consent
                                     │  POST /api/leads
                                     ▼
-                    Lead saved (Postgres) ─▶ WhatsApp text via Evolution API (Baileys)
-                                    │            "Oii, {nome}! … {NEXT_PUBLIC_VSL_URL}"
+                    Lead saved (Postgres) ─▶ MARKETING template via Omni Z-API (CoEX)
+                                    │            "Oii, {{1}}! …"  [Assistir agora → NEXT_PUBLIC_VSL_URL]
                                     ▼
                     POST /api/whatsapp/webhook ◀── delivery / read / replies
                                     │
@@ -20,8 +20,8 @@
 | `/vsl` video sales letter | Built | `src/app/vsl/page.tsx` |
 | Pause + lock at 10 s | Built | `VSL_LOCK_AT_SECONDS` in `src/components/vsl/VslPlayer.tsx` |
 | Lead-capture modal (with consent) | Built | `src/components/LeadCaptureModal.tsx` |
-| Lead storage + WhatsApp send | Built | `src/app/api/leads/route.ts`, `src/lib/evolution.ts` |
-| Delivery/read tracking, replies | Built | `src/app/api/whatsapp/webhook/[secret]/route.ts` |
+| Lead storage + template send | Built | `src/app/api/leads/route.ts`, `src/lib/zapi.ts` |
+| Delivery/read tracking, replies | Built | `src/app/api/whatsapp/webhook/route.ts` |
 | `/pagven` sales page | Placeholder ("Em breve") | `src/app/pagven/page.tsx` |
 
 Details, setup and constraints of the WhatsApp part: [`docs/WHATSAPP.md`](WHATSAPP.md).

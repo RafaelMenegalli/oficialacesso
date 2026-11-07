@@ -3,18 +3,23 @@
  *
  * 1. rate-limit by IP (5/min), validate + normalise (Zod), require consent;
  * 2. upsert the lead on phone (a repeat updates the name, never duplicates);
- * 3. send ONE WhatsApp text through Evolution API — never again for a lead
+ * 3. send the approved MARKETING template once — never again for a lead
  *    already in `sent`/`delivered`/`read`;
  * 4. on failure return a wa.me fallback link so the lead is never stranded.
  *
  * Responses never contain the phone or any id other than `leadId`.
  */
 import { getDb } from "@/lib/db";
-import { getServerEnv } from "@/lib/env";
-import { buildLeadMessage, buildWaLink, firstNameOf, sendText } from "@/lib/evolution";
 import { log, maskPhone } from "@/lib/log";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { leadRequestSchema, type LeadResponse } from "@/lib/validation";
+import {
+  assertTemplateApproved,
+  buildWaLink,
+  firstNameOf,
+  sendTemplate,
+  TemplateNotApprovedError,
+} from "@/lib/zapi";
 
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 60_000;
@@ -23,16 +28,16 @@ const ALREADY_SENT = new Set(["sent", "delivered", "read"]);
 const MSG = {
   rateLimited: "Muitas tentativas seguidas. Aguarde um minuto e tente novamente.",
   badRequest: "Não foi possível ler os dados enviados. Recarregue a página e tente novamente.",
-  notOnWhatsapp:
-    "Não encontramos WhatsApp neste número. Confira o número digitado ou toque na alternativa abaixo.",
   sendFailed:
     "Não conseguimos enviar o vídeo para o seu WhatsApp agora. Toque na alternativa abaixo para recebê-lo.",
+  unavailable:
+    "O envio pelo WhatsApp está temporariamente indisponível. Toque na alternativa abaixo para receber o vídeo.",
   internal: "Algo deu errado do nosso lado. Tente novamente em instantes.",
 } as const;
 
 /**
  * Serialises sends per phone inside this process, so a double-click or two
- * tabs can't both pass the "not sent yet" check and message her twice.
+ * tabs can't both pass the "not sent yet" check and bill two templates.
  */
 const inFlight = new Map<string, Promise<unknown>>();
 async function withPhoneLock<T>(phone: string, task: () => Promise<T>): Promise<T> {
@@ -94,59 +99,64 @@ export async function POST(request: Request) {
         return json({ status: "sent", leadId: lead.id }, 200);
       }
 
-      const text = buildLeadMessage(firstName, getServerEnv().NEXT_PUBLIC_VSL_URL);
-      const result = await sendText({ phoneE164: phone, text });
+      // Template must be APPROVED before Meta will accept it; fail fast and clearly.
+      try {
+        await assertTemplateApproved();
+      } catch (error) {
+        const code = error instanceof TemplateNotApprovedError ? `template_${error.status.toLowerCase()}` : "template_check_failed";
+        log.error("leads.template_unusable", {
+          leadId: lead.id,
+          code,
+          detail: error instanceof Error ? error.message : "unknown",
+        });
+        await db.lead.update({ where: { id: lead.id }, data: { status: "failed", replyError: code } });
+        return json(
+          { status: "failed", leadId: lead.id, message: MSG.unavailable, fallbackUrl: buildWaLink(firstName) },
+          200,
+        );
+      }
+
+      const result = await sendTemplate({ phoneE164: phone, firstName });
 
       if (result.ok) {
-        // A missing id is a soft failure: the message most likely went out, so
-        // the lead is marked sent (resending would double-message her), but
-        // status webhooks can't be matched to it.
-        const syntheticId = `sent:${lead.id}:${now.getTime()}`;
         await db.$transaction([
           db.lead.update({
             where: { id: lead.id },
-            data: {
-              status: "sent",
-              waMessageId: result.waMessageId,
-              replyError: result.waMessageId ? null : "missing_message_id",
-            },
+            data: { status: "sent", providerMessageId: result.messageId, replyError: null },
           }),
           db.messageLog.create({
             data: {
               leadId: lead.id,
               direction: "outbound",
-              waMessageId: result.waMessageId ?? syntheticId,
-              kind: "text",
-              body: text,
-              status: result.providerStatus ?? "PENDING",
+              providerMessageId: result.messageId,
+              kind: "template",
+              body: `template:${firstName}`,
+              status: "sent",
             },
           }),
         ]);
-        if (!result.waMessageId) log.warn("leads.sent_without_message_id", { leadId: lead.id });
-        log.info("leads.message_sent", { leadId: lead.id, phone: masked });
-        log.debug("leads.message_body", { leadId: lead.id, body: text });
+        log.info("leads.template_sent", { leadId: lead.id, phone: masked });
         return json({ status: "sent", leadId: lead.id }, 200);
       }
 
-      const { reason, httpStatus } = result.error;
-      const replyError = `${httpStatus}:${reason}`.slice(0, 200);
+      const { code, httpStatus } = result.error;
       await db.$transaction([
-        db.lead.update({ where: { id: lead.id }, data: { status: "failed", replyError } }),
+        db.lead.update({ where: { id: lead.id }, data: { status: "failed", replyError: code } }),
         db.messageLog.create({
           data: {
             leadId: lead.id,
             direction: "outbound",
-            // No WhatsApp id on a rejected send: synthetic key keeps the audit row unique.
-            waMessageId: `rejected:${lead.id}:${now.getTime()}`,
-            kind: "text",
+            // No provider id on a rejected send: synthetic key keeps the audit row unique.
+            providerMessageId: `rejected:${lead.id}:${now.getTime()}`,
+            kind: "template",
             status: "failed",
-            errorCode: replyError,
+            errorCode: code,
           },
         }),
       ]);
-      log.warn("leads.message_failed", { leadId: lead.id, phone: masked, httpStatus, reason });
+      log.warn("leads.template_failed", { leadId: lead.id, phone: masked, code, httpStatus });
 
-      const message = reason === "not-on-whatsapp" ? MSG.notOnWhatsapp : MSG.sendFailed;
+      const message = code === "CHANNEL_DISCONNECTED" ? MSG.unavailable : MSG.sendFailed;
       return json({ status: "failed", leadId: lead.id, message, fallbackUrl: buildWaLink(firstName) }, 200);
     });
   } catch (error) {

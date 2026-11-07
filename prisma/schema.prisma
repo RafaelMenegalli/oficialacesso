@@ -1,4 +1,4 @@
-// Lead capture + WhatsApp delivery through Evolution API (Baileys).
+// Lead capture + WhatsApp messaging (Omni Z-API, official API in CoEX mode).
 // See docs/WHATSAPP.md.
 
 generator client {
@@ -24,6 +24,7 @@ enum MessageDirection {
 }
 
 enum MessageKind {
+  template
   text
   status
 }
@@ -32,42 +33,43 @@ enum MessageKind {
 /// TODO(LGPD): retention policy is an open decision for the owner — how long
 /// leads (name, phone, consent IP) are kept and how deletion requests are handled.
 model Lead {
-  id             String     @id @default(cuid())
-  name           String
+  id                String     @id @default(cuid())
+  name              String
   /// E.164 with plus, e.g. "+5519981630656".
-  phone          String     @unique
-  source         String     @default("vsl")
-  status         LeadStatus @default(captured)
-  consentAt      DateTime
-  consentIp      String?
-  /// WhatsApp message id (key.id) of the message we sent.
-  waMessageId    String?
-  firstInboundAt DateTime?
-  /// Provider error of the last failed send/delivery.
-  replyError     String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  phone             String     @unique
+  source            String     @default("vsl")
+  status            LeadStatus @default(captured)
+  consentAt         DateTime
+  consentIp         String?
+  providerMessageId String?
+  /// First inbound message from the lead. Opens Meta's 24 h service window.
+  firstInboundAt    DateTime?
+  /// Latest inbound message; the 24 h service window runs from here.
+  lastInboundAt     DateTime?
+  /// Provider error code of the last failed send/delivery.
+  replyError        String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   messages MessageLog[]
 
   @@index([phone])
-  @@index([waMessageId])
 }
 
-/// Every outbound send and inbound/status webhook. `waMessageId` is the
+/// Every outbound send and inbound/status callback. `providerMessageId` is the
 /// idempotency key: replayed webhooks hit the unique constraint and are skipped.
 model MessageLog {
-  id          String           @id @default(cuid())
-  leadId      String?
-  lead        Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  direction   MessageDirection
-  /// WhatsApp message id, or for status webhooks "<messageId>:<STATUS>".
-  waMessageId String           @unique
-  kind        MessageKind
-  body        String?
-  status      String?
-  errorCode   String?
-  createdAt   DateTime         @default(now())
+  id                String           @id @default(cuid())
+  leadId            String?
+  lead              Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  direction         MessageDirection
+  /// Provider message id, or for status callbacks "<messageId>:<STATUS>".
+  providerMessageId String           @unique
+  kind              MessageKind
+  body              String?
+  status            String?
+  errorCode         String?
+  createdAt         DateTime         @default(now())
 
   @@index([leadId])
 }

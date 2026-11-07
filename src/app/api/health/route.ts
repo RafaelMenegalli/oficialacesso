@@ -1,17 +1,19 @@
 /**
  * GET /api/health — operator diagnostic. Requires the webhook secret in the
  * `x-webhook-secret` header (or `?token=`), so infrastructure details are not
- * public. Never returns secrets or URLs: only host kind, states and error codes.
+ * public. Never returns secrets, URLs or credentials: only which host kind the
+ * database URL points at and error codes.
  */
 import { getDb } from "@/lib/db";
 import { getServerEnv } from "@/lib/env";
-import { connectionState, EvolutionRequestError, verifyWebhookSecret } from "@/lib/evolution";
+import { verifyWebhookSecret } from "@/lib/zapi";
 
 function errorCode(error: unknown): string {
-  if (error instanceof EvolutionRequestError) return `${error.error.httpStatus}:${error.error.reason}`;
   if (error && typeof error === "object") {
     const record = error as Record<string, unknown>;
-    if (typeof record.code === "string" && record.code) return record.code;
+    for (const key of ["code", "errorCode"] as const) {
+      if (typeof record[key] === "string" && record[key]) return record[key] as string;
+    }
     const cause = record.cause;
     if (cause && typeof cause === "object" && typeof (cause as Record<string, unknown>).code === "string") {
       return (cause as Record<string, unknown>).code as string;
@@ -22,7 +24,7 @@ function errorCode(error: unknown): string {
 }
 
 /** "localhost" | "private" | "remote" — enough to spot a copied local URL. */
-function hostKind(url: string): string {
+function databaseHostKind(url: string): string {
   try {
     const host = new URL(url).hostname;
     if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "localhost";
@@ -39,26 +41,25 @@ export async function GET(request: Request) {
   if (!verifyWebhookSecret(provided)) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const env = getServerEnv();
-  const report: Record<string, string | number | null> = { databaseHost: hostKind(env.DATABASE_URL) };
+  const report: Record<string, string | number | boolean> = {
+    databaseHost: databaseHostKind(env.DATABASE_URL),
+    webhookSigning: Boolean(env.ZAPI_WEBHOOK_SIGNING_SECRET),
+  };
 
   try {
     await getDb().$queryRaw`SELECT 1`;
     report.dbConnection = "ok";
-    report.leads = await getDb().lead.count();
   } catch (error) {
-    report.dbConnection = errorCode(error); // P2021 = table missing → run `npm run db:deploy`
+    report.dbConnection = errorCode(error);
+    return Response.json(report, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 
   try {
-    // Global key: connectionState is an instance lifecycle endpoint.
-    report.whatsapp = await connectionState(
-      { baseUrl: env.EVOLUTION_BASE_URL, apiKey: env.EVOLUTION_API_KEY },
-      env.EVOLUTION_INSTANCE_NAME,
-    );
+    report.leads = await getDb().lead.count();
+    report.dbTables = "ok";
   } catch (error) {
-    report.whatsapp = errorCode(error);
+    report.dbTables = errorCode(error); // P2021 = table missing → run `npm run db:deploy`
   }
 
-  const healthy = report.dbConnection === "ok" && report.whatsapp === "open";
-  return Response.json(report, { status: healthy ? 200 : 503, headers: { "Cache-Control": "no-store" } });
+  return Response.json(report, { headers: { "Cache-Control": "no-store" } });
 }
