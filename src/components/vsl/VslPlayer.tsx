@@ -84,13 +84,8 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
   const [coverStatus, setCoverStatus] = useState<VslCoverStatus>("idle");
   /** True when playback only succeeded muted (in-app browser fallback). */
   const [needsUnmute, setNeedsUnmute] = useState(false);
+  /** Once locked, the modal stays open for good — including after a successful send. */
   const [locked, setLocked] = useState(false);
-  /**
-   * Set once the WhatsApp message went out: the modal closes, but the video
-   * stays locked — the full video is delivered through the WhatsApp link.
-   */
-  const [leadSent, setLeadSent] = useState(false);
-  const handleLeadSent = useCallback(() => setLeadSent(true), []);
   // Mirrors `locked` synchronously so media event handlers never see stale state.
   const lockedRef = useRef(false);
 
@@ -234,7 +229,7 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
         </p>
       </div>
 
-      <LeadCaptureModal open={locked && !leadSent} onSubmit={submitLead} onSuccess={handleLeadSent} />
+      <LeadCaptureModal open={locked} onSubmit={submitLead} />
     </>
   );
 }

@@ -2,9 +2,10 @@
 
 /**
  * Blocking lead-capture modal, opened by <VslPlayer /> when the video reaches
- * VSL_LOCK_AT_SECONDS. It cannot be dismissed: no close button, Escape is
- * ignored, and if the browser force-closes it anyway it reopens. It only
- * closes itself after the WhatsApp message was sent (onSuccess).
+ * VSL_LOCK_AT_SECONDS. It can never be dismissed — not even after success:
+ * no close button, Escape is ignored, and if the browser force-closes it
+ * anyway it reopens. After the WhatsApp message is sent it stays on the
+ * confirmation; the full video is delivered through the WhatsApp link.
  * See docs/FUNNEL.md and docs/WHATSAPP.md.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
@@ -21,8 +22,6 @@ export interface LeadCaptureModalProps {
   open: boolean;
   /** Calls the API. Resolves with its response; rejects only on network failure. */
   onSubmit: (data: LeadCaptureData) => Promise<LeadResponse>;
-  /** Called after the success message has been shown. */
-  onSuccess: () => void;
 }
 
 type View =
@@ -31,7 +30,6 @@ type View =
   | { kind: "success" }
   | { kind: "error"; message: string; fallbackUrl?: string };
 
-const SUCCESS_CLOSE_DELAY_MS = 3500;
 const NETWORK_ERROR = "Sem conexão com a internet no momento. Verifique sua rede e tente novamente.";
 
 /** Formats raw digits as a Brazilian phone number: (11) 98765-4321. */
@@ -47,7 +45,7 @@ function formatPhone(digits: string): string {
 const inputClass =
   "w-full rounded-lg border border-gold/25 bg-wine/20 px-4 py-3 text-base text-bone placeholder:text-muted/60 focus:border-gold disabled:opacity-60";
 
-export function LeadCaptureModal({ open, onSubmit, onSuccess }: LeadCaptureModalProps) {
+export function LeadCaptureModal({ open, onSubmit }: LeadCaptureModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openRef = useRef(open);
   const titleId = useId();
@@ -74,13 +72,6 @@ export function LeadCaptureModal({ open, onSubmit, onSuccess }: LeadCaptureModal
       root.style.overflow = "";
     };
   }, [open]);
-
-  // Close shortly after a successful send.
-  useEffect(() => {
-    if (view.kind !== "success") return;
-    const timer = window.setTimeout(onSuccess, SUCCESS_CLOSE_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [view.kind, onSuccess]);
 
   const submitting = view.kind === "submitting";
   const trimmedName = name.trim();
@@ -132,7 +123,7 @@ export function LeadCaptureModal({ open, onSubmit, onSuccess }: LeadCaptureModal
             Enviamos o acesso ao vídeo completo para o seu WhatsApp{" "}
             <span className="whitespace-nowrap text-gold-soft">{formatPhone(phoneDigits)}</span>.
           </p>
-          <p className="text-sm text-muted">Abra a conversa e toque em “Assistir agora”.</p>
+          <p className="text-sm text-muted">Abra a conversa e toque no link para assistir.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} noValidate aria-busy={submitting} className="flex flex-col gap-5 p-6 sm:p-8">

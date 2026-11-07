@@ -37,8 +37,9 @@ Details, setup and constraints of the WhatsApp part: [`docs/WHATSAPP.md`](WHATSA
 - **Dismissing the modal:** it has no close button and ignores Escape. If the browser
   force-closes it anyway, it reopens. While it's open, the page behind can't be clicked
   or scrolled.
-- **After the message is sent:** the modal shows "Pronto!" and closes after about 3.5 s. The video
-  stays locked: the full video is delivered through the WhatsApp link.
+- **After the message is sent:** the modal switches to the "Pronto!" confirmation and **stays
+  open**, and it can't be closed either. The video stays locked: the full video is delivered
+  through the WhatsApp link.
 - **If sending fails:** the modal stays open with the specific error, keeps what she typed and
   offers the wa.me fallback link.
 - **Reload:** the lock is deliberately not saved. A reload starts the video from 0, plays
