@@ -89,9 +89,50 @@ export function firstNameOf(fullName: string): string {
 // Copy
 // ---------------------------------------------------------------------------
 
+/** Common Brazilian female names that don't end in "a". */
+const FEMININE_NAMES = new Set([
+  "raquel", "isabel", "isabelle", "beatriz", "ingrid", "carmen", "ester", "esther", "rute", "ruth",
+  "thais", "tais", "lais", "laís", "thaís", "kelly", "keli", "suely", "sueli", "nely", "neli", "lucy",
+  "miriam", "mirian", "liz", "lis", "inês", "ines", "abigail", "rachel", "mabel", "maribel", "evelyn",
+  "evelin", "jennifer", "jenifer", "karen", "caren", "kauany", "geovany", "yasmin", "jasmin", "jasmim",
+  "ellen", "helen", "hellen", "eveline", "ruthe", "deise", "neide", "cleide", "eunice", "berenice",
+  "clarice", "alice", "beatrice", "rose", "rosy", "mery", "nathaly", "nataly", "emily", "emilly",
+  "milene", "luz", "flor", "marlei", "sirlei", "darlei", "irlei", "lurdes", "mercedes", "dolores",
+  "doris", "iris", "íris", "anaís", "anais", "lorrane", "lorrany", "mel", "noemi", "nohemi",
+  "ruty", "ivy", "jully", "sabrine", "kamily", "camily", "emanuelly", "isabelly", "sarah", "hannah",
+]);
+
+/** Common male names that end in "a". */
+const MASCULINE_A_NAMES = new Set([
+  "luca", "lucca", "gianluca", "joshua", "nicola", "nikola", "juca", "zeca", "batista", "garcia",
+  "costa", "jeová", "isaia", "vavá", "dida", "jesua", "noa",
+]);
+
+/**
+ * Female endings for names that don't end in "a" (Aline, Daiane, Daniele,
+ * Gisele, Denise, Alice, Irene, Ivete…). Deliberately excludes "iz" (Luiz),
+ * "ny"/"ly" (Tony, Billy) — those female names are in the list above.
+ */
+const FEMININE_ENDINGS = /(ane|ine|ele|elle|ise|ice|ene|ete|ette)$/;
+
+/**
+ * "a" for a female first name, "o" for a male one. Simple rule: ends in "a"
+ * → "a", plus the female exceptions/endings above; anything else → "o".
+ * Not perfect for unusual names — that's accepted to keep it simple.
+ */
+export function articleFor(firstName: string): "a" | "o" {
+  const name = firstName.trim().toLocaleLowerCase("pt-BR");
+  if (!name) return "a";
+  if (MASCULINE_A_NAMES.has(name)) return "o";
+  if (FEMININE_NAMES.has(name)) return "a";
+  if (name.endsWith("a") || name.endsWith("á")) return "a";
+  if (FEMININE_ENDINGS.test(name)) return "a";
+  return "o";
+}
+
 /** The one and only outbound message. First name + link; no phone, no ids. */
-export function buildLeadMessage(firstName: string, vslUrl: string): string {
-  return `Oii, ${firstName}! Tudo bem? 💛\nSegue o link para assistir ao vídeo completo:\n${vslUrl}`;
+export function buildLeadMessage(firstName: string, videoUrl: string): string {
+  return `oii, é ${articleFor(firstName)} ${firstName}? se sim, aqui vai o link da página com o vídeo completo: ${videoUrl}`;
 }
 
 /**

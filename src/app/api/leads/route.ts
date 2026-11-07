@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         return json({ status: "sent", leadId: lead.id }, 200);
       }
 
-      const text = buildLeadMessage(firstName, getServerEnv().NEXT_PUBLIC_VSL_URL);
+      const text = buildLeadMessage(firstName, getServerEnv().WHATSAPP_VIDEO_URL);
       const result = await sendText({ phoneE164: phone, text });
 
       if (result.ok) {

@@ -11,13 +11,21 @@ modal ─POST /api/leads─▶ validate + consent + upsert Lead ─▶ POST /mes
 Evolution ─POST /api/whatsapp/webhook/<secret>─▶ delivery/read updates, inbound replies, connection state
 ```
 
-The message (built by `buildLeadMessage()` in `src/lib/evolution.ts`):
+The message (built by `buildLeadMessage()` in `src/lib/evolution.ts`) is written to look like a
+person typed it:
 
 ```
-Oii, {primeiro nome}! Tudo bem? 💛
-Segue o link para assistir ao vídeo completo:
-https://oficialacesso.site/vsl
+oii, é a Maria? se sim, aqui vai o link da página com o vídeo completo: https://oficialacesso.site/video
 ```
+
+- The link comes from `WHATSAPP_VIDEO_URL` (default `https://oficialacesso.site/video`).
+- The article before the name is picked by `articleFor()`, a deliberately simple rule:
+  - `a` when the first name ends in "a" (Maria, Ana);
+  - `a` for a list of common female names that don't end in "a" (Raquel, Beatriz, Ingrid…);
+  - `a` for female endings (-ane, -ine, -ele, -ise, -ice, -ene, -ete: Aline, Daniele, Denise…);
+  - `o` for everything else, and for male names ending in "a" (Luca, Joshua…).
+
+  Unusual names can come out wrong. Add them to the lists in `src/lib/evolution.ts`.
 
 ## Why Evolution API
 

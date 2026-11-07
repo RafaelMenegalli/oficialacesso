@@ -5,7 +5,7 @@
                                     │  POST /api/leads
                                     ▼
                     Lead saved (Postgres) ─▶ WhatsApp text via Evolution API (Baileys)
-                                    │            "Oii, {nome}! … {NEXT_PUBLIC_VSL_URL}"
+                                    │            "oii, é a/o {nome}? … {WHATSAPP_VIDEO_URL}"
                                     ▼
                     POST /api/whatsapp/webhook ◀── delivery / read / replies
                                     │

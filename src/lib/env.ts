@@ -20,8 +20,8 @@ const required = (name: string) =>
 
 const coreSchema = z.object({
   DATABASE_URL: required("DATABASE_URL"),
-  /** Link placed in the WhatsApp message. */
-  NEXT_PUBLIC_VSL_URL: z.url().default("https://oficialacesso.site/vsl"),
+  /** Link placed in the WhatsApp message (the page with the full video). */
+  WHATSAPP_VIDEO_URL: z.url().default("https://oficialacesso.site/video"),
   /** Business number, digits only — target of the wa.me fallback link. */
   WHATSAPP_BUSINESS_PHONE: z
     .string()
