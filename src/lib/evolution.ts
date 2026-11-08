@@ -146,7 +146,7 @@ export function articleFor(firstName: string): "a" | "o" {
 
 /** The one and only outbound message. First name + link; no phone, no ids. */
 export function buildLeadMessage(firstName: string, videoUrl: string): string {
-  return `oii, é ${articleFor(firstName)} ${firstName}? se sim, aqui vai o link da página com o vídeo completo: ${videoUrl}`;
+  return `oii, é ${articleFor(firstName)} ${firstName}? se sim, aqui vai o link da página com o vídeo completo: ${videoUrl}\nqualquer dúvida pode me chamar aqui!`;
 }
 
 /**

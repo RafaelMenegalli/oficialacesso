@@ -16,6 +16,7 @@ person typed it:
 
 ```
 oii, é a Maria? se sim, aqui vai o link da página com o vídeo completo: https://oficialacesso.site/video-completo
+qualquer dúvida pode me chamar aqui!
 ```
 
 - The link comes from `WHATSAPP_VIDEO_URL` (default `https://oficialacesso.site/video-completo`).
