@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { LeadCaptureModal, type LeadCaptureData } from "@/components/LeadCaptureModal";
 import type { LeadResponse } from "@/lib/validation";
+import { VslControls } from "./VslControls";
 import { VslCover, type VslCoverStatus } from "./VslCover";
 
 /**
@@ -90,6 +91,7 @@ export function VslPlayer({
   lockAtSeconds = VSL_LOCK_AT_SECONDS,
 }: VslPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   /** Single source of truth for cover visibility, native controls and pointer-events. */
   const [hasStarted, setHasStarted] = useState(false);
   const [coverStatus, setCoverStatus] = useState<VslCoverStatus>("idle");
@@ -185,27 +187,28 @@ export function VslPlayer({
     setNeedsUnmute(false);
   }, []);
 
-  // Hide the unmute pill if the visitor unmutes via the native controls.
+  // Hide the unmute pill if the visitor unmutes via the controls' sound button.
   const handleVolumeChange = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (!event.currentTarget.muted) setNeedsUnmute(false);
   }, []);
 
   return (
     <>
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-gold/35 bg-ink shadow-[0_0_0_1px_color-mix(in_srgb,var(--wine-bright)_45%,transparent),0_0_60px_-10px_color-mix(in_srgb,var(--wine-bright)_65%,transparent),0_30px_80px_-20px_rgb(0_0_0/0.9)] sm:rounded-2xl">
+      <div ref={containerRef} className="relative aspect-video w-full overflow-hidden rounded-xl border border-gold/35 bg-ink shadow-[0_0_0_1px_color-mix(in_srgb,var(--wine-bright)_45%,transparent),0_0_60px_-10px_color-mix(in_srgb,var(--wine-bright)_65%,transparent),0_30px_80px_-20px_rgb(0_0_0/0.9)] sm:rounded-2xl">
         <video
           ref={videoRef}
           className="vsl-video absolute inset-0 size-full bg-ink object-cover"
           src={src}
-          // No native chrome until the visitor starts playback from the cover.
-          controls={hasStarted}
+          // Never native controls: they show the time and progress bar, which
+          // iOS Safari and Firefox won't let us hide. <VslControls /> replaces them.
+          controls={false}
           playsInline
           preload="metadata"
           controlsList="nodownload noplaybackrate"
           disablePictureInPicture
           disableRemotePlayback
           aria-label={title}
-          tabIndex={hasStarted ? 0 : -1}
+          tabIndex={-1}
           onTimeUpdate={handleTimeUpdate}
           onSeeking={handleSeeking}
           onPlay={handlePlay}
@@ -213,6 +216,8 @@ export function VslPlayer({
         >
           Seu navegador não suporta vídeo.
         </video>
+
+        {hasStarted ? <VslControls videoRef={videoRef} containerRef={containerRef} /> : null}
 
         <VslCover
           image={coverImage}
