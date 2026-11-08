@@ -29,9 +29,11 @@ function HeartIcon() {
 export function TestimonialCard({
   testimonial,
   size = "lg",
+  showLikes = true,
 }: {
   testimonial: Testimonial;
   size?: "lg" | "sm";
+  showLikes?: boolean;
 }) {
   const avatarPx = size === "lg" ? 48 : 40;
   const avatarSize = size === "lg" ? "size-12" : "size-10";
@@ -65,10 +67,12 @@ export function TestimonialCard({
         <blockquote className="mt-1 text-base leading-relaxed break-words text-bone/90">
           <p>{testimonial.text}</p>
         </blockquote>
-        <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted">
-          <HeartIcon />
-          <span aria-label={`${testimonial.likes} curtidas`}>{testimonial.likes}</span>
-        </p>
+        {showLikes ? (
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted">
+            <HeartIcon />
+            <span aria-label={`${testimonial.likes} curtidas`}>{testimonial.likes}</span>
+          </p>
+        ) : null}
       </div>
     </figure>
   );

@@ -1,4 +1,5 @@
 import type { Testimonial } from "@/data/testimonials";
+import { LocalComments } from "./LocalComments";
 import { Reveal } from "./Reveal";
 import { TestimonialCard } from "./TestimonialCard";
 
@@ -21,9 +22,10 @@ export function Testimonials({ items }: { items: Testimonial[] }) {
 
       <Reveal>
         <div className="rounded-2xl border border-gold/20 bg-ink/80 p-4 shadow-[0_20px_60px_-25px_rgb(0_0_0/0.9)] backdrop-blur-sm sm:p-6">
+          <p className="mb-4 text-sm font-medium text-muted">Últimos comentários</p>
           <ol className="divide-y divide-gold/10">
             {items.map((item) => (
-              <li key={item.id} className="py-5 first:pt-1 last:pb-1">
+              <li key={item.id} className="py-5 first:pt-1">
                 <TestimonialCard testimonial={item} />
 
                 {item.replies && item.replies.length > 0 ? (
@@ -41,6 +43,7 @@ export function Testimonials({ items }: { items: Testimonial[] }) {
               </li>
             ))}
           </ol>
+          <LocalComments />
         </div>
       </Reveal>
     </section>
