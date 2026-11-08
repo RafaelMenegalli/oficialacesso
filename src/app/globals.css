@@ -129,3 +129,15 @@ body {
     transition: none !important;
   }
 }
+
+/*
+ * VSL player: hide the elapsed / remaining time and the progress bar in the
+ * native controls so the visitor can't see how long the video is. Works in
+ * Chromium (Chrome, Edge, Android) and desktop Safari; Firefox exposes no
+ * selector for them.
+ */
+.vsl-video::-webkit-media-controls-current-time-display,
+.vsl-video::-webkit-media-controls-time-remaining-display,
+.vsl-video::-webkit-media-controls-timeline {
+  display: none;
+}
