@@ -38,6 +38,11 @@ export interface VslPlayerProps {
    * current playback state. Use it for analytics.
    */
   onTimeUpdate?: (state: VslPlaybackState, video: HTMLVideoElement) => void;
+  /**
+   * Seconds at which playback locks behind the lead-capture modal. Defaults to
+   * VSL_LOCK_AT_SECONDS; pass `null` for a free player with no modal at all.
+   */
+  lockAtSeconds?: number | null;
 }
 
 type WebkitVideo = HTMLVideoElement & {
@@ -53,8 +58,8 @@ function exitImmersiveModes(video: HTMLVideoElement) {
   if (document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => {});
 }
 
-function isPastLock(video: HTMLVideoElement): boolean {
-  return VSL_LOCK_AT_SECONDS !== null && video.currentTime >= VSL_LOCK_AT_SECONDS;
+function isPastLock(video: HTMLVideoElement, lockAt: number | null): boolean {
+  return lockAt !== null && video.currentTime >= lockAt;
 }
 
 const UNEXPECTED_RESPONSE: LeadResponse = {
@@ -77,7 +82,13 @@ async function submitLead(data: LeadCaptureData): Promise<LeadResponse> {
   }
 }
 
-export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerProps) {
+export function VslPlayer({
+  src,
+  coverImage,
+  title,
+  onTimeUpdate,
+  lockAtSeconds = VSL_LOCK_AT_SECONDS,
+}: VslPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   /** Single source of truth for cover visibility, native controls and pointer-events. */
   const [hasStarted, setHasStarted] = useState(false);
@@ -91,15 +102,15 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
 
   /** Pauses at the lock point and opens the modal. Idempotent. */
   const enforceLock = useCallback((video: HTMLVideoElement) => {
-    if (VSL_LOCK_AT_SECONDS === null) return;
-    if (video.currentTime > VSL_LOCK_AT_SECONDS) video.currentTime = VSL_LOCK_AT_SECONDS;
+    if (lockAtSeconds === null) return;
+    if (video.currentTime > lockAtSeconds) video.currentTime = lockAtSeconds;
     video.pause();
     exitImmersiveModes(video);
     if (!lockedRef.current) {
       lockedRef.current = true;
       setLocked(true);
     }
-  }, []);
+  }, [lockAtSeconds]);
 
   const handleTimeUpdate = useCallback(
     (event: SyntheticEvent<HTMLVideoElement>) => {
@@ -108,18 +119,18 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
         { currentTime: video.currentTime, duration: video.duration, paused: video.paused },
         video,
       );
-      if (lockedRef.current || isPastLock(video)) enforceLock(video);
+      if (lockedRef.current || isPastLock(video, lockAtSeconds)) enforceLock(video);
     },
-    [onTimeUpdate, enforceLock],
+    [onTimeUpdate, enforceLock, lockAtSeconds],
   );
 
   // Dragging the progress bar past the lock point locks immediately.
   const handleSeeking = useCallback(
     (event: SyntheticEvent<HTMLVideoElement>) => {
       const video = event.currentTarget;
-      if (lockedRef.current || isPastLock(video)) enforceLock(video);
+      if (lockedRef.current || isPastLock(video, lockAtSeconds)) enforceLock(video);
     },
-    [enforceLock],
+    [enforceLock, lockAtSeconds],
   );
 
   // Any attempt to resume playback while locked (media keys, headset button,
@@ -184,7 +195,7 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-gold/35 bg-ink shadow-[0_0_0_1px_color-mix(in_srgb,var(--wine-bright)_45%,transparent),0_0_60px_-10px_color-mix(in_srgb,var(--wine-bright)_65%,transparent),0_30px_80px_-20px_rgb(0_0_0/0.9)] sm:rounded-2xl">
         <video
           ref={videoRef}
-          className="absolute inset-0 size-full bg-ink object-cover"
+          className="vsl-video absolute inset-0 size-full bg-ink object-cover"
           src={src}
           // No native chrome until the visitor starts playback from the cover.
           controls={hasStarted}
@@ -229,7 +240,7 @@ export function VslPlayer({ src, coverImage, title, onTimeUpdate }: VslPlayerPro
         </p>
       </div>
 
-      <LeadCaptureModal open={locked} onSubmit={submitLead} />
+      {lockAtSeconds !== null ? <LeadCaptureModal open={locked} onSubmit={submitLead} /> : null}
     </>
   );
 }
