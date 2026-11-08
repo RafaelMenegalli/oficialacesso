@@ -376,7 +376,8 @@ export type SendResult =
 /**
  * Sends the lead message. `delay` makes Evolution show "digitando…" for
  * 1.2 s before sending (v2 sends the composing presence during the delay) —
- * part of the ban-risk mitigation, keep it. `linkPreview` renders the VSL card.
+ * part of the ban-risk mitigation, keep it. `linkPreview` is off on purpose:
+ * plain text with a bare link reads like a person typed it, not a bot.
  * The message starts as PENDING; MESSAGES_UPDATE confirms it later.
  */
 export async function sendText(params: { phoneE164: string; text: string }): Promise<SendResult> {
@@ -392,7 +393,7 @@ export async function sendText(params: { phoneE164: string; text: string }): Pro
         number: params.phoneE164.replace(/\D/g, ""), // digits only, country code, no "+"/@suffix
         text: params.text,
         delay: 1200,
-        linkPreview: true,
+        linkPreview: false,
       },
     })) as Record<string, unknown> | null;
     const keyOf = (o: unknown) =>
