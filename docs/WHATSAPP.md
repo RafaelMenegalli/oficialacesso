@@ -15,10 +15,10 @@ The message (built by `buildLeadMessage()` in `src/lib/evolution.ts`) is written
 person typed it:
 
 ```
-oii, é a Maria? se sim, aqui vai o link da página com o vídeo completo: https://oficialacesso.site/video
+oii, é a Maria? se sim, aqui vai o link da página com o vídeo completo: https://oficialacesso.site/video-completo
 ```
 
-- The link comes from `WHATSAPP_VIDEO_URL` (default `https://oficialacesso.site/video`).
+- The link comes from `WHATSAPP_VIDEO_URL` (default `https://oficialacesso.site/video-completo`).
 - The article before the name is picked by `articleFor()`, a deliberately simple rule:
   - `a` when the first name ends in "a" (Maria, Ana);
   - `a` for a list of common female names that don't end in "a" (Raquel, Beatriz, Ingrid…);

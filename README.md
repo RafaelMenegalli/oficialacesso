@@ -77,7 +77,7 @@ Every variable is listed with a one-line comment in [`.env.example`](.env.exampl
 | `EVOLUTION_INSTANCE_NAME`, `EVOLUTION_INSTANCE_TOKEN` | The instance and its token, used for sending. |
 | `EVOLUTION_WEBHOOK_SECRET` | Secret path segment of the webhook URL. |
 | `APP_URL` | Public URL of this app, used by the setup script for the webhook URL. |
-| `WHATSAPP_VIDEO_URL` | Link sent in the WhatsApp message (default `https://oficialacesso.site/video`). |
+| `WHATSAPP_VIDEO_URL` | Link sent in the WhatsApp message (default `https://oficialacesso.site/video-completo`). |
 | `WHATSAPP_BUSINESS_PHONE` | Business number, used for the wa.me fallback link. |
 
 The video locks at 10 seconds (`VSL_LOCK_AT_SECONDS` in `src/components/vsl/VslPlayer.tsx`).
